@@ -15,5 +15,6 @@ router.post('/', auth(['user']), ratingValidation, validate, ratingController.su
 router.get('/store/:store_id', auth(['user', 'store_owner']), ratingController.getUserRating);
 router.get('/store/:store_id/all', auth(['store_owner', 'admin']), ratingController.getStoreRatings);
 router.delete('/store/:store_id', auth(['user']), ratingController.deleteRating);
+router.put('/:rating_id', auth(['user']), ratingController.updateRating);
 
 module.exports = router; 

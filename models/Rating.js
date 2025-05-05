@@ -15,6 +15,10 @@ const Rating = sequelize.define('Rating', {
             max: 5
         }
     },
+    comment: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
     user_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

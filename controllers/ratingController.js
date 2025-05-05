@@ -2,7 +2,7 @@ const { Rating, Store, sequelize, User } = require('../models');
 
 const submitRating = async (req, res) => {
     try {
-        const { store_id, rating } = req.body;
+        const { store_id, rating, comment } = req.body;
         const user_id = req.user.id;
 
         // Convert rating to number
@@ -20,11 +20,17 @@ const submitRating = async (req, res) => {
         // Check if user has already rated this store
         const [ratingObj, created] = await Rating.findOrCreate({
             where: { user_id, store_id },
-            defaults: { rating: numericRating }
+            defaults: { 
+                rating: numericRating,
+                comment: comment || null
+            }
         });
 
         if (!created) {
-            await ratingObj.update({ rating: numericRating });
+            await ratingObj.update({ 
+                rating: numericRating,
+                comment: comment || ratingObj.comment // Keep existing comment if no new one provided
+            });
         }
 
         // Get all ratings for the store
@@ -38,9 +44,17 @@ const submitRating = async (req, res) => {
         const totalRating = allRatings.reduce((sum, r) => sum + Number(r.rating), 0);
         const averageRating = ratingCount > 0 ? totalRating / ratingCount : 0;
 
+        // Get the updated rating with user details
+        const updatedRating = await Rating.findByPk(ratingObj.id, {
+            include: [{
+                model: User,
+                attributes: ['id', 'name', 'email']
+            }]
+        });
+
         res.json({
             message: created ? 'Rating submitted successfully' : 'Rating updated successfully',
-            rating: ratingObj,
+            rating: updatedRating,
             store: {
                 ...store.toJSON(),
                 average_rating: averageRating,
@@ -153,6 +167,8 @@ const getStoreRatings = async (req, res) => {
         const { store_id } = req.params;
         const user_id = req.user.id;
 
+        console.log('Fetching ratings for store:', store_id, 'by user:', user_id);
+
         // Check if the user is the store owner
         const store = await Store.findOne({
             where: { id: store_id, owner_id: user_id }
@@ -161,6 +177,8 @@ const getStoreRatings = async (req, res) => {
         if (!store && req.user.role !== 'admin') {
             return res.status(403).json({ message: 'Not authorized to view these ratings' });
         }
+
+        console.log('Store found:', store ? 'yes' : 'no');
 
         const ratings = await Rating.findAll({
             where: { store_id },
@@ -171,10 +189,56 @@ const getStoreRatings = async (req, res) => {
             order: [['createdAt', 'DESC']]
         });
 
+        console.log('Ratings found:', ratings.length);
+
         res.json(ratings);
     } catch (error) {
-        console.error('Error fetching store ratings:', error);
-        res.status(500).json({ message: 'Failed to fetch store ratings', error: error.message });
+        console.error('Detailed error in getStoreRatings:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+        });
+        res.status(500).json({ 
+            message: 'Failed to fetch store ratings', 
+            error: error.message,
+            details: error.stack
+        });
+    }
+};
+
+const updateRating = async (req, res) => {
+    try {
+        const { rating_id } = req.params;
+        const { rating, comment } = req.body;
+        const user_id = req.user.id;
+
+        const ratingObj = await Rating.findOne({
+            where: { id: rating_id, user_id }
+        });
+
+        if (!ratingObj) {
+            return res.status(404).json({ message: 'Rating not found' });
+        }
+
+        await ratingObj.update({
+            rating: rating || ratingObj.rating,
+            comment: comment || ratingObj.comment
+        });
+
+        const updatedRating = await Rating.findByPk(rating_id, {
+            include: [{
+                model: User,
+                attributes: ['id', 'name', 'email']
+            }]
+        });
+
+        res.json({
+            message: 'Rating updated successfully',
+            rating: updatedRating
+        });
+    } catch (error) {
+        console.error('Error updating rating:', error);
+        res.status(500).json({ message: 'Failed to update rating', error: error.message });
     }
 };
 
@@ -183,5 +247,6 @@ module.exports = {
     getUserRating,
     deleteRating,
     createRating,
-    getStoreRatings
+    getStoreRatings,
+    updateRating
 }; 
